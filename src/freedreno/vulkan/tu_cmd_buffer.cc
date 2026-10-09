@@ -1421,6 +1421,23 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
       return true;
    }
 
+   /* GammaOS (Adreno 610, emulator workloads): render directly to system memory by default.
+    * 3DS emulation issues many small passes that load and store their attachments, where
+    * GMEM tiling costs more than it saves (Metroid: Samus Returns at 2x: pass time 26 -> 23 ms,
+    * 95 -> 97 percent speed; Super Mario 3D Land unchanged). GAMMA_GMEM=1 or TU_DEBUG=gmem
+    * restore the upstream choice.
+    */
+   {
+      static const bool gamma_gmem = [] {
+         const char *v = os_get_option("GAMMA_GMEM");
+         return v && strcmp(v, "0") != 0;
+      }();
+      if (!gamma_gmem && !TU_DEBUG(GMEM)) {
+         cmd->state.rp.force_render_mode_reason = "GammaOS sysmem default";
+         return true;
+      }
+   }
+
    /* can't fit attachments into gmem */
    if (!cmd->state.tiling->possible) {
       cmd->state.rp.force_render_mode_reason = "Can't fit attachments into gmem";

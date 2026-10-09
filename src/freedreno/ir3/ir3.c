@@ -665,6 +665,21 @@ ir3_collect_info(struct ir3_shader_variant *v)
          gamma_stats = e && e[0] == '1';
       }
       if (gamma_stats && v->type == MESA_SHADER_FRAGMENT) {
+         unsigned n_ldc = 0, n_tex = 0, n_isam = 0, n_other6 = 0;
+         foreach_block (block, &v->ir->block_list) {
+            foreach_instr (instr, &block->instr_list) {
+               if (instr->opc == OPC_LDC)
+                  n_ldc++;
+               else if (instr->opc == OPC_ISAM)
+                  n_isam++;
+               else if (opc_cat(instr->opc) == 5)
+                  n_tex++;
+               else if (opc_cat(instr->opc) == 6)
+                  n_other6++;
+            }
+         }
+         mesa_logi("gamma ir3 fs mem: ldc %u isam %u tex %u cat6 %u consts %u", n_ldc, n_isam,
+                   n_tex, n_other6, v->constlen);
          mesa_logi("gamma ir3 fs: instrs %u nops %u mov %u cov %u max_reg %d half %d "
                    "waves %u wide %u ss %u sy %u sstall %u (ss) systall %u last_baryf %u "
                    "",

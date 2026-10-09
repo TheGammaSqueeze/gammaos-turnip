@@ -375,14 +375,14 @@ ir3_get_waves_per_wg(struct ir3_shader_variant *v, bool double_threadsize)
 }
 
 /* GammaOS: minimum waves in flight for the 128-wide fragment wave opt-in
- * (GAMMA_WIDE_MIN_WAVES, default 4: the Adreno 610 lit 3DS shaders need it). */
+ * (GAMMA_WIDE_MIN_WAVES, default 3: the heavy lit 3DS shaders on the Adreno 610 need it). */
 static unsigned
 gamma_min_waves(void)
 {
    static int v = -1;
    if (v < 0) {
       const char *e = os_get_option("GAMMA_WIDE_MIN_WAVES");
-      v = e ? atoi(e) : 4;
+      v = e ? atoi(e) : 3;
    }
    return v;
 }

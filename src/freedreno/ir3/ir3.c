@@ -4,6 +4,8 @@
  */
 
 #include "ir3.h"
+#include "util/log.h"
+#include "util/os_misc.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -372,6 +374,19 @@ ir3_get_waves_per_wg(struct ir3_shader_variant *v, bool double_threadsize)
           compiler->info->wave_granularity;
 }
 
+/* GammaOS: minimum waves in flight for the 128-wide fragment wave opt-in
+ * (GAMMA_WIDE_MIN_WAVES, default 4: the Adreno 610 lit 3DS shaders need it). */
+static unsigned
+gamma_min_waves(void)
+{
+   static int v = -1;
+   if (v < 0) {
+      const char *e = os_get_option("GAMMA_WIDE_MIN_WAVES");
+      v = e ? atoi(e) : 4;
+   }
+   return v;
+}
+
 void
 ir3_collect_info(struct ir3_shader_variant *v)
 {
@@ -622,7 +637,7 @@ ir3_collect_info(struct ir3_shader_variant *v)
        MIN2(v->branchstack, compiler->info->threadsize_base * 2) <=
           compiler->max_branchstack &&
        regs_count * 2 <= compiler->reg_size_vec4 &&
-       ir3_get_reg_dependent_max_waves(compiler, regs_count, true) >= 8) {
+       ir3_get_reg_dependent_max_waves(compiler, regs_count, true) >= gamma_min_waves()) {
       info->double_threadsize = true;
    }
 
@@ -641,6 +656,24 @@ ir3_collect_info(struct ir3_shader_variant *v)
       compiler, regs_count, info->double_threadsize);
    info->max_waves = MIN2(reg_independent_max_waves, reg_dependent_max_waves);
    assert(info->max_waves <= v->compiler->info->max_waves);
+
+   /* GammaOS debug: GAMMA_IR3_STATS=1 logs every fragment shader's statistics. */
+   {
+      static int gamma_stats = -1;
+      if (gamma_stats < 0) {
+         const char *e = os_get_option("GAMMA_IR3_STATS");
+         gamma_stats = e && e[0] == '1';
+      }
+      if (gamma_stats && v->type == MESA_SHADER_FRAGMENT) {
+         mesa_logi("gamma ir3 fs: instrs %u nops %u mov %u cov %u max_reg %d half %d "
+                   "waves %u wide %u ss %u sy %u sstall %u (ss) systall %u last_baryf %u "
+                   "",
+                   info->instrs_count, info->nops_count, info->mov_count, info->cov_count,
+                   info->max_reg, info->max_half_reg, info->max_waves,
+                   info->double_threadsize, info->ss, info->sy, info->sstall, info->systall,
+                   info->last_baryf);
+      }
+   }
 
    ralloc_free(mem_ctx);
 }

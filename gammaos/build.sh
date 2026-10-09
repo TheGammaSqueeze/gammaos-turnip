@@ -7,7 +7,9 @@ cd "$(dirname "$0")/.."
 NDK=${1:-${ANDROID_NDK:-/work/android-ndk-r27c}}
 OUT=gammaos/out
 mkdir -p $OUT
-sed "s|@NDK@|$NDK|g" gammaos/android-aarch64.ini > $OUT/cross.ini
+# Rewrite the cross file only when it changes (a fresh time stamp makes meson regenerate).
+sed "s|@NDK@|$NDK|g" gammaos/android-aarch64.ini > $OUT/cross.ini.new
+if cmp -s $OUT/cross.ini.new $OUT/cross.ini; then rm $OUT/cross.ini.new; else mv $OUT/cross.ini.new $OUT/cross.ini; fi
 if [ ! -f $OUT/build/build.ninja ]; then
   meson setup $OUT/build --cross-file $OUT/cross.ini \
     -Dbuildtype=release -Db_lto=false -Dstrip=true \

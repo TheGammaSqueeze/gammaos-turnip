@@ -100,7 +100,11 @@ enum class tu_autotune::algorithm : uint8_t {
    PREFER_SYSMEM = 3, /* Always use SYSMEM unless we have strong evidence that GMEM is better. */
    PREFER_GMEM = 4,   /* Always use GMEM unless we have strong evidence that SYSMEM is better. */
 
-   DEFAULT = BANDWIDTH, /* Default algorithm, used if no other is specified. */
+   /* GammaOS: emulator render passes that look the same to a static estimate differ in which mode is faster
+    * (Super Mario 3D Land's title pass is faster in GMEM, Metroid: Samus Returns' bottom screen in sysmem), so
+    * the mode is measured per render pass instead.
+    */
+   DEFAULT = PROFILED, /* Default algorithm, used if no other is specified. */
 };
 
 /* Modifier flags, these modify the behavior of the autotuner in a user-defined way. */
@@ -303,12 +307,11 @@ tu_autotune::get_env_config()
 
       /* Parse the flags from the environment variable. */
       const char *flags_env_str = os_get_option("TU_AUTOTUNE_FLAGS");
-      /* GammaOS: render passes with 10 or more draws use GMEM unless TU_AUTOTUNE_FLAGS says otherwise.
-       * The bandwidth estimate put the 3D scene of Super Mario 3D Land in sysmem, where it takes 7.9 ms
-       * instead of 5.3 ms on the Adreno 610 (uncapped 155 -> 205 percent speed); other games measured
-       * unchanged (Metroid: Samus Returns, Mario Kart 7, Pokemon Sun).
+      /* GammaOS: tune small render passes too (with the profiled default) unless TU_AUTOTUNE_FLAGS says
+       * otherwise. Uncapped speed on the Adreno 610 against the earlier big_gmem default: Pokemon Sun 210 ->
+       * 223 percent, SM3DL 151 -> 155 (level) and 205 (title, unchanged), Metroid and Mario Kart 7 unchanged.
        */
-      uint32_t mod_flags = (uint32_t) mod_flag::BIG_GMEM;
+      uint32_t mod_flags = (uint32_t) mod_flag::TUNE_SMALL;
       if (flags_env_str) {
          static const struct debug_control tu_at_flags_control[] = {
             { "big_gmem", (uint32_t) mod_flag::BIG_GMEM },

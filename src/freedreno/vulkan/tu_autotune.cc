@@ -303,7 +303,12 @@ tu_autotune::get_env_config()
 
       /* Parse the flags from the environment variable. */
       const char *flags_env_str = os_get_option("TU_AUTOTUNE_FLAGS");
-      uint32_t mod_flags = 0;
+      /* GammaOS: render passes with 10 or more draws use GMEM unless TU_AUTOTUNE_FLAGS says otherwise.
+       * The bandwidth estimate put the 3D scene of Super Mario 3D Land in sysmem, where it takes 7.9 ms
+       * instead of 5.3 ms on the Adreno 610 (uncapped 155 -> 205 percent speed); other games measured
+       * unchanged (Metroid: Samus Returns, Mario Kart 7, Pokemon Sun).
+       */
+      uint32_t mod_flags = (uint32_t) mod_flag::BIG_GMEM;
       if (flags_env_str) {
          static const struct debug_control tu_at_flags_control[] = {
             { "big_gmem", (uint32_t) mod_flag::BIG_GMEM },

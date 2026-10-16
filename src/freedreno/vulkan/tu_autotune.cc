@@ -1104,6 +1104,17 @@ struct tu_autotune::rp_history {
       bool is_sysmem_winning = false;
       uint64_t winning_since_ts = 0;
 
+      /* GammaOS: decisions since the losing mode was last sampled. Once a mode's probability
+       * sits at 1 percent it is almost never measured again, so its average goes stale when
+       * the pass's content changes under the same hash (an emulator reuses one pass for a
+       * loading screen and then a level: Luigi's Mansion kept a 21 ms system memory average
+       * from the load while GMEM measured the level at 0.5 ms, and stayed on GMEM although the
+       * level rendered 25 percent faster in system memory). The loser is sampled at least once
+       * every EXPLORE_INTERVAL decisions while the choice is not locked.
+       */
+      uint32_t decisions_since_explore = 0;
+      static constexpr uint32_t EXPLORE_INTERVAL = 24;
+
     public:
       profiled_algo(uint64_t hash)
       {
@@ -1211,6 +1222,15 @@ struct tu_autotune::rp_history {
       {
          uint32_t l_sysmem_probability = sysmem_probability.load(std::memory_order_relaxed);
          bool select_sysmem = (rand_xorshift128plus(seed) % PROBABILITY_MAX) < l_sysmem_probability;
+         if (!locked && l_sysmem_probability != PROBABILITY_MID) {
+            const bool loser_sysmem = l_sysmem_probability < PROBABILITY_MID;
+            if (select_sysmem == loser_sysmem) {
+               decisions_since_explore = 0;
+            } else if (++decisions_since_explore >= EXPLORE_INTERVAL) {
+               decisions_since_explore = 0;
+               select_sysmem = loser_sysmem;
+            }
+         }
          render_mode mode = select_sysmem ? render_mode::SYSMEM : render_mode::GMEM;
 
          at_log_profiled_h("%" PRIu32 "%% sysmem chance, using %s", history.hash, l_sysmem_probability,

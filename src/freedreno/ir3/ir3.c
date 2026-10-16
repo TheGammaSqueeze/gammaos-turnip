@@ -657,14 +657,16 @@ ir3_collect_info(struct ir3_shader_variant *v)
    info->max_waves = MIN2(reg_independent_max_waves, reg_dependent_max_waves);
    assert(info->max_waves <= v->compiler->info->max_waves);
 
-   /* GammaOS debug: GAMMA_IR3_STATS=1 logs every fragment shader's statistics. */
+   /* GammaOS debug: GAMMA_IR3_STATS=1 logs every vertex and fragment shader's statistics. */
    {
       static int gamma_stats = -1;
       if (gamma_stats < 0) {
          const char *e = os_get_option("GAMMA_IR3_STATS");
          gamma_stats = e && e[0] == '1';
       }
-      if (gamma_stats && v->type == MESA_SHADER_FRAGMENT) {
+      if (gamma_stats &&
+          (v->type == MESA_SHADER_FRAGMENT || v->type == MESA_SHADER_VERTEX)) {
+         const char *stage = v->type == MESA_SHADER_FRAGMENT ? "fs" : "vs";
          unsigned n_ldc = 0, n_tex = 0, n_isam = 0, n_other6 = 0;
          foreach_block (block, &v->ir->block_list) {
             foreach_instr (instr, &block->instr_list) {
@@ -678,12 +680,12 @@ ir3_collect_info(struct ir3_shader_variant *v)
                   n_other6++;
             }
          }
-         mesa_logi("gamma ir3 fs mem: ldc %u isam %u tex %u cat6 %u consts %u", n_ldc, n_isam,
-                   n_tex, n_other6, v->constlen);
-         mesa_logi("gamma ir3 fs: instrs %u nops %u mov %u cov %u max_reg %d half %d "
+         mesa_logi("gamma ir3 %s mem: ldc %u isam %u tex %u cat6 %u consts %u", stage, n_ldc,
+                   n_isam, n_tex, n_other6, v->constlen);
+         mesa_logi("gamma ir3 %s: instrs %u nops %u mov %u cov %u max_reg %d half %d "
                    "waves %u wide %u ss %u sy %u sstall %u (ss) systall %u last_baryf %u "
                    "",
-                   info->instrs_count, info->nops_count, info->mov_count, info->cov_count,
+                   stage, info->instrs_count, info->nops_count, info->mov_count, info->cov_count,
                    info->max_reg, info->max_half_reg, info->max_waves,
                    info->double_threadsize, info->ss, info->sy, info->sstall, info->systall,
                    info->last_baryf);

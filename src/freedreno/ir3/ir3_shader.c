@@ -454,13 +454,21 @@ assemble_variant(struct ir3_shader_variant *v, bool internal)
    v->bin = ir3_shader_assemble(v);
 
    /* GammaOS debug: GAMMA_IR3_DUMP=<dir> writes the disassembly of the first fragment
-    * shaders over 300 instructions to <dir>/ir3_fs_<n>.txt. */
+    * shaders over 300 instructions to <dir>/ir3_fs_<n>.txt, and of the first vertex shaders
+    * over 2000 instructions to <dir>/ir3_vs_<n>.txt. */
    {
       static int dumped = 0;
+      static int dumped_vs = 0;
       const char *dir = os_get_option("GAMMA_IR3_DUMP");
-      if (dir && v->type == MESA_SHADER_FRAGMENT && v->info.instrs_count > 300 && dumped < 6) {
+      const bool big_fs = v->type == MESA_SHADER_FRAGMENT && v->info.instrs_count > 300 && dumped < 6;
+      const bool big_vs = v->type == MESA_SHADER_VERTEX && v->info.instrs_count > 2000 &&
+                          !v->key.safe_constlen && dumped_vs < 6;
+      if (dir && (big_fs || big_vs)) {
          char path[256];
-         snprintf(path, sizeof(path), "%s/ir3_fs_%d.txt", dir, dumped++);
+         if (big_fs)
+            snprintf(path, sizeof(path), "%s/ir3_fs_%d.txt", dir, dumped++);
+         else
+            snprintf(path, sizeof(path), "%s/ir3_vs_%d.txt", dir, dumped_vs++);
          FILE *f = fopen(path, "w");
          if (f) {
             ir3_shader_disasm(v, v->bin, f);

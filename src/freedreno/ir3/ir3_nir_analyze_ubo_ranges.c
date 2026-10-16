@@ -8,6 +8,20 @@
 #include "util/u_math.h"
 #include "ir3_compiler.h"
 #include "ir3_nir.h"
+#include "util/log.h"
+#include "util/os_misc.h"
+
+/* GammaOS debug: GAMMA_IR3_STATS=1 also logs why UBO ranges are not pushed. */
+static inline bool
+gamma_ubo_debug(void)
+{
+   static int on = -1;
+   if (on < 0) {
+      const char *e = os_get_option("GAMMA_IR3_STATS");
+      on = e && e[0] == '1';
+   }
+   return on;
+}
 
 static inline bool
 get_ubo_load_range(nir_shader *nir, nir_intrinsic_instr *instr,
@@ -28,8 +42,12 @@ get_ubo_load_range(nir_shader *nir, nir_intrinsic_instr *instr,
    }
 
    /* If we haven't figured out the range accessed in the UBO, bail. */
-   if (size == ~0)
+   if (size == ~0) {
+      if (gamma_ubo_debug())
+         mesa_logi("gamma ubo: indirect load with unknown range (base %u) in stage %d",
+                   offset, (int)nir->info.stage);
       return false;
+   }
 
    r->start = ROUND_DOWN_TO(offset, alignment * 16);
    r->end = align(offset + size, alignment * 16);
@@ -157,8 +175,12 @@ gather_ubo_ranges(nir_shader *nir, nir_intrinsic_instr *instr,
       r.end = MAX2(r.end, plan_r->end);
 
       uint32_t added = (plan_r->start - r.start) + (r.end - plan_r->end);
-      if (added >= *upload_remaining)
+      if (added >= *upload_remaining) {
+         if (gamma_ubo_debug())
+            mesa_logi("gamma ubo: ubo %u [%u, %u) extends a range by %u bytes, %u left: stays a load",
+                      ubo.block, r.start, r.end, added, *upload_remaining);
          return;
+      }
 
       plan_r->start = r.start;
       plan_r->end = r.end;
@@ -170,12 +192,20 @@ gather_ubo_ranges(nir_shader *nir, nir_intrinsic_instr *instr,
       return;
    }
 
-   if (state->num_enabled == ARRAY_SIZE(state->range))
+   if (state->num_enabled == ARRAY_SIZE(state->range)) {
+      if (gamma_ubo_debug())
+         mesa_logi("gamma ubo: range table full (%u), ubo %u [%u, %u) stays a load",
+                   state->num_enabled, ubo.block, r.start, r.end);
       return;
+   }
 
    uint32_t added = r.end - r.start;
-   if (added >= *upload_remaining)
+   if (added >= *upload_remaining) {
+      if (gamma_ubo_debug())
+         mesa_logi("gamma ubo: ubo %u [%u, %u) needs %u bytes, %u left: stays a load",
+                   ubo.block, r.start, r.end, added, *upload_remaining);
       return;
+   }
 
    struct ir3_ubo_range *plan_r = &state->range[state->num_enabled++];
    plan_r->ubo = ubo;

@@ -636,6 +636,12 @@ struct tu_cmd_state
 
    bool pipeline_blend_lrz, pipeline_bandwidth, pipeline_disable_fs;
    uint32_t pipeline_draw_states;
+   /* Draw states the previous pipeline baked (set_state_mask) that the newly
+    * bound pipeline leaves dynamic: the command buffer slot still holds the
+    * old pipeline's state, so these are re-emitted from the runtime's dynamic
+    * state at the next draw.
+    */
+   uint32_t reemit_draw_states;
 
    /* VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT and
     * VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT are allowed to run simultaniously,

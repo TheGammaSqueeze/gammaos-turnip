@@ -5732,6 +5732,14 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
          tu_cs_emit_draw_state(cs, TU_DRAW_STATE_DYNAMIC + i, pipeline->dynamic_state[i]);
    }
 
+   /* A state baked into the previous pipeline (and copied into our dynamic
+    * state slot below) that this pipeline leaves dynamic has to come back from
+    * the runtime's dynamic state, which the framework does not consider dirty:
+    * its value never changed, only the pipeline that overrode it went away.
+    * Without this a depth-only pipeline's dummy blend constants, for example,
+    * stay in effect for every later draw in the command buffer.
+    */
+   cmd->state.reemit_draw_states |= cmd->state.pipeline_draw_states & ~set_state_mask;
    cmd->state.pipeline_draw_states = set_state_mask;
    u_foreach_bit(i, set_state_mask)
       cmd->state.dynamic_state[i] = pipeline->dynamic_state[i];
@@ -8654,7 +8662,8 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
    /* Emit state first, because it's needed for bandwidth calculations */
    uint32_t dynamic_draw_state_dirty = 0;
    if (!BITSET_IS_EMPTY(cmd->vk.dynamic_graphics_state.dirty) ||
-       (cmd->state.dirty & ~TU_CMD_DIRTY_COMPUTE_DESC_SETS)) {
+       (cmd->state.dirty & ~TU_CMD_DIRTY_COMPUTE_DESC_SETS) ||
+       cmd->state.reemit_draw_states) {
       dynamic_draw_state_dirty = tu_emit_draw_state<CHIP>(cmd);
    }
 

@@ -10257,6 +10257,72 @@ tu_CmdEndRendering2EXT(VkCommandBuffer commandBuffer,
    }
 }
 
+/* QCTDD06315140: zero the UBWC flag data of the given subresources of an
+ * image that just left VK_IMAGE_LAYOUT_UNDEFINED, see
+ * tu_image_needs_ubwc_flag_clear().  Only called outside of a render pass.
+ */
+static void
+tu_clear_ubwc_flags(struct tu_cmd_buffer *cmd,
+                    struct tu_image *image,
+                    const VkImageSubresourceRange *range)
+{
+   const struct fdl_layout *layout = &image->layout[0];
+   uint32_t base_level = range->baseMipLevel;
+   uint32_t level_count = vk_image_subresource_level_count(&image->vk, range);
+   uint32_t base_layer = range->baseArrayLayer;
+   uint32_t layer_count = vk_image_subresource_layer_count(&image->vk, range);
+
+   /* 3D images only get UBWC with a single level, and their flag data holds
+    * one slice per depth slice.
+    */
+   if (image->vk.image_type == VK_IMAGE_TYPE_3D) {
+      base_layer = 0;
+      layer_count = image->vk.extent.depth;
+   }
+
+   if (!layout->ubwc_layer_size || !level_count || !layer_count)
+      return;
+
+   VkCommandBuffer handle = tu_cmd_buffer_to_handle(cmd);
+
+   /* Whatever the previous owner of this memory left in a cache must land
+    * before the clear, and nothing may read the flags before the clear has
+    * landed.  This only runs when an image is (re)initialized, so a full
+    * flush is cheap enough.
+    */
+   cmd->state.cache.flush_bits |= TU_CMD_FLAG_ALL_CLEAN |
+                                  TU_CMD_FLAG_ALL_INVALIDATE |
+                                  TU_CMD_FLAG_WAIT_FOR_IDLE;
+
+   if (base_level == 0 && level_count == image->vk.mip_levels) {
+      /* The flag data of all levels of a layer is contiguous, and so are
+       * the layers.
+       */
+      tu_cmd_fill_buffer_addr(handle,
+                              image->iova +
+                                 fdl_ubwc_offset(layout, 0, base_layer),
+                              layout->ubwc_layer_size * layer_count, 0);
+   } else {
+      for (uint32_t l = 0; l < layer_count; l++) {
+         for (uint32_t m = 0; m < level_count; m++) {
+            uint32_t level = base_level + m;
+            uint32_t size = layout->ubwc_slices[level].size0;
+            if (!size)
+               continue;
+            tu_cmd_fill_buffer_addr(handle,
+                                    image->iova +
+                                       fdl_ubwc_offset(layout, level,
+                                                       base_layer + l),
+                                    size, 0);
+         }
+      }
+   }
+
+   cmd->state.cache.flush_bits |= TU_CMD_FLAG_ALL_CLEAN |
+                                  TU_CMD_FLAG_ALL_INVALIDATE |
+                                  TU_CMD_FLAG_WAIT_FOR_IDLE;
+}
+
 void
 tu_barrier(struct tu_cmd_buffer *cmd,
            uint32_t dep_count,
@@ -10469,6 +10535,27 @@ tu_barrier(struct tu_cmd_buffer *cmd,
       enum tu_stage dst_stage = vk2tu_dst_stage(cmd->device, dstStage);
       TU_CALLX(cmd->device, tu_flush_for_stage)(cache, src_stage, dst_stage,
                                                 by_region);
+   }
+
+   /* QCTDD06315140: images leaving UNDEFINED get their UBWC flag data
+    * cleared. Layout transitions from UNDEFINED cannot happen inside a
+    * render pass.
+    */
+   if (!cmd->state.pass) {
+      for (uint32_t dep_idx = 0; dep_idx < dep_count; dep_idx++) {
+         const VkDependencyInfo *dep_info = &dep_infos[dep_idx];
+         for (uint32_t i = 0; i < dep_info->imageMemoryBarrierCount; i++) {
+            const VkImageMemoryBarrier2 *barrier =
+               &dep_info->pImageMemoryBarriers[i];
+            if (barrier->oldLayout != VK_IMAGE_LAYOUT_UNDEFINED &&
+                barrier->oldLayout != VK_IMAGE_LAYOUT_PREINITIALIZED)
+               continue;
+
+            VK_FROM_HANDLE(tu_image, image, barrier->image);
+            if (tu_image_needs_ubwc_flag_clear(cmd->device, image))
+               tu_clear_ubwc_flags(cmd, image, &barrier->subresourceRange);
+         }
+      }
    }
 }
 

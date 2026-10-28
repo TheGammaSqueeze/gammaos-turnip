@@ -158,6 +158,10 @@ a6xx_base = GPUProps(
         max_texel_buffer_range_elements = 1 << 27,
         max_storage_buffer_range_bytes = 1 << 27,
 
+        # Only a knob for FD_DEV_FEATURES, see freedreno_dev_info.h
+        disable_16bpp_ubwc = False,
+
+        QCTDD06315140 = True,
         QCTDD06363318 = True,
     )
 
@@ -275,6 +279,8 @@ a6xx_gen4 = GPUProps(
         # Be safe and don't enable it either.
         # supports_linear_mipmap_threshold_in_blocks = True,
         round_robin_errata = True,
+
+        QCTDD06315140 = False,
     )
 
 a6xx_gen1_low_magic_regs = dict(

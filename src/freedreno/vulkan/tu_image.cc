@@ -363,6 +363,16 @@ ubwc_possible(struct tu_device *device,
        vk_format_get_plane_count(format) == 1)
       return false;
 
+   /* Debug knob to compare against the QCTDD06315140 flag clear: the same
+    * formats the clear covers (2 byte texels, R8G8 only with MSAA).
+    */
+   if (info->props.disable_16bpp_ubwc &&
+       vk_format_get_blocksize(format) == 2 &&
+       vk_format_get_plane_count(format) == 1 &&
+       (vk_format_get_nr_components(format) != 2 ||
+        samples > VK_SAMPLE_COUNT_1_BIT))
+      return false;
+
    if (type == VK_IMAGE_TYPE_3D && mip_levels > 1) {
       if (device) {
          perf_debug(
@@ -426,6 +436,44 @@ ubwc_possible(struct tu_device *device,
    if (format == VK_FORMAT_R64_UINT || format == VK_FORMAT_R64_SINT) {
       return false;
    }
+
+   return true;
+}
+
+/* QCTDD06315140: on a6xx (except gen4) the UBWC flag data of 2 byte per
+ * texel formats must not hold arbitrary values.  Memory that comes back from
+ * a sub-allocator (or any memory the app recycles) still holds whatever the
+ * previous owner wrote there, and the hardware reading such flags can wedge
+ * the whole SoC instead of raising a GPU fault.  The blob and the gallium
+ * driver clear the flags before first use; we do it when an image leaves
+ * VK_IMAGE_LAYOUT_UNDEFINED in a pipeline barrier, see tu_barrier().
+ */
+bool
+tu_image_needs_ubwc_flag_clear(const struct tu_device *device,
+                               const struct tu_image *image)
+{
+   if (!FD_QUIRK(device->physical_device->info, QCTDD06315140_ubwc_clear))
+      return false;
+
+   if (!image->layout[0].ubwc || tu6_plane_count(image->vk.format) != 1)
+      return false;
+
+   /* Sparse images do not own a single contiguous binding, and lazily
+    * allocated (transient) memory may have no backing at all.
+    */
+   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
+      return false;
+
+   if (!image->mem || image->mem->lazy || !image->iova)
+      return false;
+
+   if (vk_format_get_blocksize(image->vk.format) != 2)
+      return false;
+
+   /* For R8G8 formats it is only needed with MSAA 2x and up. */
+   if (vk_format_get_nr_components(image->vk.format) == 2 &&
+       image->vk.samples < VK_SAMPLE_COUNT_2_BIT)
+      return false;
 
    return true;
 }

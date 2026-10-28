@@ -40,6 +40,7 @@ class CCUColorCacheFraction(Enum):
     THREE_QUARTER = 3  # a8xx_gen2 and later
 
 quirk_names = {
+    "QCTDD06315140": "ubwc_clear",
     "QCTDD06363318": "movs_half",
     "QCTDD08407086": "cs_lock_unlock",
     "QCTDD08517960": "fs_constlen",

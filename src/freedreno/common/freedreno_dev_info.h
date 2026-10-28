@@ -163,6 +163,12 @@ struct fd_dev_info {
 
       bool has_8bpp_ubwc;
 
+      /* Debug knob: never use UBWC for 2 byte per texel formats (the ones
+       * QCTDD06315140 is about).  Off by default, it can be turned on with
+       * FD_DEV_FEATURES=disable_16bpp_ubwc=1 to compare against the flag clear.
+       */
+      bool disable_16bpp_ubwc;
+
       bool has_lpac;
 
       /* True if getfiberid, getlast.w8, brcst.active, and quad_shuffle
@@ -499,6 +505,8 @@ struct fd_dev_info {
       /* Set RB_DBG_ECO_CNTL b24 for 2d blits
        */
       bool QCTDD04536579 : 1;
+      /* Clear ubwc flag data for 16b formats: */
+      bool QCTDD06315140_ubwc_clear : 1;
       /* movs performs half->full conversion if src_type is half, regardless
        * of dst_type
        */

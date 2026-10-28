@@ -144,6 +144,10 @@ bool
 tiling_possible(VkFormat format);
 
 bool
+tu_image_needs_ubwc_flag_clear(const struct tu_device *device,
+                               const struct tu_image *image);
+
+bool
 ubwc_possible(struct tu_device *device,
               VkFormat format,
               VkImageType type,
